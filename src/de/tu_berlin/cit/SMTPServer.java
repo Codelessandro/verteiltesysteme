@@ -108,13 +108,12 @@ public class SMTPServer {
 		
 		ServerSocketChannel server = ServerSocketChannel.open();
 		Selector selector = Selector.open();
-		server.socket().bind(new InetSocketAddress(12345));
-		System.out.println("Server runs on localhost");
-		
 		server.configureBlocking(false);
+		server.socket().bind(new InetSocketAddress(1234));
 		server.register(selector, SelectionKey.OP_ACCEPT);
 		
-		System.out.println("test");
+		System.out.println("Server runs on localhost");
+		
 		while (true) {
 			
 			if (selector.select() == 0) {
@@ -122,26 +121,26 @@ public class SMTPServer {
 			}
 			
 			Set<SelectionKey> selectedKeys = selector.selectedKeys();
-			//System.out.println(selectedKeys.size());
 			Iterator<SelectionKey> iter = selectedKeys.iterator();
 			
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
 				
 				if (key.isAcceptable()) {
-					System.out.println("isAccaptable()");
-					SocketChannel client = server.accept();
+					System.out.println("Server: isAccaptable()");
+					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
+					SocketChannel client = sock.accept();
 					client.configureBlocking(false);
 					client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 				}
 				
 				if (key.isReadable()) {
-					System.out.println("isReadable()");
+					System.out.println("Server: isReadable()");
 					ByteBuffer bb = ByteBuffer.allocate(1024);
 					SocketChannel channel = (SocketChannel) key.channel();
 					channel.read(bb);
 					bb.flip();
-					System.out.println(bb);
+					System.out.println("Buffer: " + bb);
 					
 					/*Path dir = Files.createDirectory(Paths.get("sender"));
 					Path file = Files.createFile(Paths.get("/"));
@@ -149,8 +148,9 @@ public class SMTPServer {
 					System.out.println(bb);
 					FileChannel fileChannel = FileChannel.open(file);
 					fileChannel.write(bb);*/
-					
 				}
+				
+				iter.remove();
 			}
 			
 		}
