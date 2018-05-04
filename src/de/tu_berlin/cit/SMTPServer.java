@@ -105,31 +105,50 @@ public class SMTPServer {
 		
 	public static void main(String[] args) throws IOException, CharacterCodingException,
 			UnsupportedCharsetException {
-		ServerSocketChannel serverChannel = ServerSocketChannel.open();
+		
+		ServerSocketChannel server = ServerSocketChannel.open();
 		Selector selector = Selector.open();
-		InetSocketAddress remoteAddress = new InetSocketAddress(args[0], 
-						Integer.parseInt(args[1]));
-		System.out.println("Server runs on: " + remoteAddress.getHostName() 
-				+ " on port: " + remoteAddress.getPort());
+		server.socket().bind(new InetSocketAddress(12345));
+		System.out.println("Server runs on localhost");
 		
-		serverChannel.configureBlocking(false);
-		serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+		server.configureBlocking(false);
+		server.register(selector, SelectionKey.OP_ACCEPT);
 		
+		System.out.println("test");
 		while (true) {
+			
+			if (selector.select() == 0) {
+				continue;
+			}
+			
 			Set<SelectionKey> selectedKeys = selector.selectedKeys();
+			//System.out.println(selectedKeys.size());
 			Iterator<SelectionKey> iter = selectedKeys.iterator();
 			
-			if (iter.hasNext()) {
+			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
 				
 				if (key.isAcceptable()) {
-					Path dir = Files.createDirectory(Paths.get("sender"));
+					System.out.println("isAccaptable()");
+					SocketChannel client = server.accept();
+					client.configureBlocking(false);
+					client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+				}
+				
+				if (key.isReadable()) {
+					System.out.println("isReadable()");
+					ByteBuffer bb = ByteBuffer.allocate(1024);
+					SocketChannel channel = (SocketChannel) key.channel();
+					channel.read(bb);
+					bb.flip();
+					System.out.println(bb);
+					
+					/*Path dir = Files.createDirectory(Paths.get("sender"));
 					Path file = Files.createFile(Paths.get("/"));
 					SocketChannel clientChannel = (SocketChannel) key.channel();
-					ByteBuffer bb = ByteBuffer.allocate(1024);
-					clientChannel.read(bb);
+					System.out.println(bb);
 					FileChannel fileChannel = FileChannel.open(file);
-					fileChannel.write(bb);
+					fileChannel.write(bb);*/
 					
 				}
 			}
