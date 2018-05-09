@@ -1,11 +1,14 @@
 package de.tu_berlin.cit;
 
+import SMTPClientState;
 import java.nio.*;
 import java.nio.charset.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.nio.channels.*;
+import java.io.File;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
@@ -99,9 +102,6 @@ public class SMTPServer {
 //			e.printStackTrace();
 //		}
 	*/
-	
-	private static Charset msgCharset = Charset.forName("US-ASCII");
-	private static CharsetDecoder decoder = msgCharset.newDecoder();
 		
 	public static void main(String[] args) throws IOException, CharacterCodingException,
 			UnsupportedCharsetException {
@@ -126,6 +126,11 @@ public class SMTPServer {
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
 				
+				/*System.out.println("Server: " + key.toString());*/
+				//System.out.println("Server: " + key.readyOps());
+				System.out.println("isWritable: " + key.isWritable());
+				System.out.println("isReadable: " + key.isReadable());
+				
 				if (key.isAcceptable()) {
 					System.out.println("Server: isAccaptable()");
 					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
@@ -141,13 +146,35 @@ public class SMTPServer {
 					channel.read(bb);
 					bb.flip();
 					System.out.println("Buffer: " + bb);
+				}
+				
+				if (key.isWritable()) {
+					System.out.println("Server: isWritable()");
 					
-					/*Path dir = Files.createDirectory(Paths.get("sender"));
-					Path file = Files.createFile(Paths.get("/"));
-					SocketChannel clientChannel = (SocketChannel) key.channel();
-					System.out.println(bb);
-					FileChannel fileChannel = FileChannel.open(file);
-					fileChannel.write(bb);*/
+					Charset msgCharset = Charset.forName("US-ASCII");
+					CharsetDecoder decoder = msgCharset.newDecoder(); 
+					ByteBuffer buffer = ByteBuffer.allocate(1024);
+					SocketChannel channel = (SocketChannel) key.channel();
+					SMTPClientState state = key.attachment();
+					channel.read(buffer);
+					System.out.println("capacity: " + buffer.capacity());
+					System.out.println("buffer: " + buffer);
+					CharBuffer charBuf = decoder.decode(buffer);
+					System.out.println("capacity: " + charBuf.capacity());
+					System.out.println("position: " + charBuf.position());
+					System.out.println("limit: " + charBuf.limit());
+					//System.out.println(charBuf);
+					
+					//System.out.println("str: " + res);
+					
+					
+					//Path dir = Files.createDirectory(Paths.get("sender"));
+					//File file = Files.createFile(Paths.get("./")).toFile();
+					//System.out.println(file);
+					
+					/*System.out.println("print File: ");
+					FileChannel fileChannel = FileChannel.open(file, StandardOpenOption.WRITE);
+					fileChannel.write(buffer);*/
 				}
 				
 				iter.remove();
