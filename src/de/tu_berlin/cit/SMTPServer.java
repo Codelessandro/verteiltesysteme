@@ -1,6 +1,5 @@
 package de.tu_berlin.cit;
 
-//import SMTPClientState;
 import java.nio.*;
 import java.nio.charset.*;
 import java.nio.file.Files;
@@ -15,6 +14,9 @@ import java.util.*;
 
 
 public class SMTPServer {
+	
+	private static Charset msgCharset = Charset.forName("US-ASCII");
+	private static CharsetDecoder decoder = msgCharset.newDecoder();
 		
 	public static void main(String[] args) throws IOException, CharacterCodingException,
 			UnsupportedCharsetException {
@@ -53,7 +55,9 @@ public class SMTPServer {
 					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
 					SocketChannel client = sock.accept();
 					client.configureBlocking(false);
-					client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+					SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+					SMTPServerState state = new SMTPServerState();
+					clientKey.attach(state);
 				}
 				
 				if (key.isReadable()) {
@@ -64,14 +68,25 @@ public class SMTPServer {
 					clientChannel.read(buffer);
 					buffer.flip();
 					System.out.println("Buffer: " + buffer);
-					String result = new String(buffer.array()).trim();
 					
-					if (result.endsWith("\n\r")) {
+					/*String result = new String(buffer.array()).trim();
+					
+					if (result.endsWith("\n\r.\n\r")) {
 						clientChannel.close();
-					}
+					}*/
 				}
 				
 				if (key.isWritable()) {
+					System.out.println("Server: isWritable()");
+					
+					SocketChannel client = (SocketChannel) key.channel();
+					byte[] hyphen = new String("250-\n").getBytes(msgCharset);
+					ByteBuffer buffer = ByteBuffer.wrap(hyphen);
+					client.write(buffer);
+					
+				}
+				
+				/*if (key.isWritable()) {
 					System.out.println("Server: isWritable()");
 					
 					byte responseCode = (byte) 250;
@@ -80,7 +95,7 @@ public class SMTPServer {
 					bb.put(responseCode);
 					
 					SocketChannel client = (SocketChannel) key.channel();
-					key.attachment()
+					key.attachment();
 					client.write(bb);
 					
 					/*Charset msgCharset = Charset.forName("US-ASCII");
@@ -106,8 +121,8 @@ public class SMTPServer {
 					
 					System.out.println("print File: ");
 					FileChannel fileChannel = FileChannel.open(file, StandardOpenOption.WRITE);
-					fileChannel.write(buffer);*/
-				}
+					fileChannel.write(buffer);
+				}*/
 				
 				iter.remove();
 			}
