@@ -56,8 +56,10 @@ public class SMTPServer {
 					SocketChannel client = sock.accept();
 					client.configureBlocking(false);
 					SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-					SMTPServerState state = new SMTPServerState();
-					clientKey.attach(state);
+					System.out.println("clientKey: " + clientKey);
+					/*SMTPServerState state = new SMTPServerState();
+					state.setMessage(new String("220-service ready").getBytes(msgCharset));
+					clientKey.attach(state);*/
 				}
 				
 				if (key.isReadable()) {
@@ -79,10 +81,21 @@ public class SMTPServer {
 				if (key.isWritable()) {
 					System.out.println("Server: isWritable()");
 					
-					SocketChannel client = (SocketChannel) key.channel();
-					byte[] hyphen = new String("250-\n").getBytes(msgCharset);
+					// write a response code to the client with a hyphen
+					/*SocketChannel client = (SocketChannel) key.channel();
+					byte[] hyphen = new String("250-first line").getBytes(msgCharset);
 					ByteBuffer buffer = ByteBuffer.wrap(hyphen);
-					client.write(buffer);
+					client.write(buffer);*/
+					
+					// retrieve the state object from the channel
+					/*SocketChannel channel = (SocketChannel) key.channel();
+					SMTPClientState state = (SMTPClientState) key.attachment();
+					System.out.println("client state: " + state);*/
+					
+					// attach a new server state object to the channel
+					SMTPServerState state = new SMTPServerState();
+					state.setMessage(new String("220-service ready").getBytes(msgCharset));
+					key.attach(state);
 					
 				}
 				
