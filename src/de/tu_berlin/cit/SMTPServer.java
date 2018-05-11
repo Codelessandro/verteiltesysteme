@@ -63,13 +63,48 @@ public class SMTPServer {
 				}
 				
 				if (key.isReadable()) {
-					System.out.println("Server: isReadable()");
+					System.err.println("Server: isReadable()");
 					
 					ByteBuffer buffer = ByteBuffer.allocate(1024);
 					SocketChannel clientChannel = (SocketChannel) key.channel();
 					clientChannel.read(buffer);
 					buffer.flip();
-					System.out.println("Buffer: " + buffer);
+					System.out.println("ByteBuffer: " + buffer);
+					CharBuffer charB = decoder.decode(buffer);
+					String response = charB.toString();
+					System.out.println("CharBuffer: " + response);
+					System.out.println("substring: " + response.substring(0, 4));
+					
+					switch (response.substring(0, 4)) {
+						case "HELO":
+							System.err.println("Command: HELO");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+						case "MAIL":
+							System.err.println("Command: MAIL");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+						case "DATA":
+							System.err.println("Command: DATA");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+						case "RCPT":
+							System.err.println("Command: RCPT");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+						case "QUIT":
+							System.err.println("Command: QUIT");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+						case "HELP":
+							System.err.println("Command: HELP");
+							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							break;
+							
+						
+						default:
+							System.out.println("wrong command");
+					}
 					
 				}
 				
@@ -78,9 +113,12 @@ public class SMTPServer {
 					
 					// write a response code to the client with a hyphen
 					SocketChannel channel = (SocketChannel) key.channel();
-					byte[] hyphen = new String("250-balbalalala\r\n").getBytes(msgCharset);
-					ByteBuffer buffer = ByteBuffer.wrap(hyphen);
+					byte[] response = new String("220-service ready\r\n").getBytes(msgCharset);
+					ByteBuffer buffer = ByteBuffer.allocate(1024);
+					buffer.put(response);
+					buffer.flip();
 					channel.write(buffer);
+					
 					
 				}
 				
