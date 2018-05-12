@@ -52,33 +52,54 @@ public class SMTPServer {
 				
 				if (key.isAcceptable()) {
 					System.out.println("Server: isAccaptable()");
+					
 					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
 					SocketChannel client = sock.accept();
 					client.configureBlocking(false);
-					SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-					System.out.println("clientKey: " + clientKey);
-					/*SMTPServerState state = new SMTPServerState();
-					state.setMessage(new String("220-service ready").getBytes(msgCharset));
-					clientKey.attach(state);*/
+					client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+					
 				}
 				
-				if (key.isReadable()) {
+				/*if (key.isReadable()) {
 					System.err.println("Server: isReadable()");
+					
+				}*/
+				
+				if (key.isWritable()) {
+					System.err.println("Server: isWritable()");
 					
 					ByteBuffer buffer = ByteBuffer.allocate(1024);
 					SocketChannel clientChannel = (SocketChannel) key.channel();
-					clientChannel.read(buffer);
+					int readBytes = clientChannel.read(buffer);
 					buffer.flip();
+					System.out.println("read bytes: " + readBytes);
 					System.out.println("ByteBuffer: " + buffer);
 					CharBuffer charB = decoder.decode(buffer);
 					String response = charB.toString();
 					System.out.println("CharBuffer: " + response);
-					System.out.println("substring: " + response.substring(0, 4));
 					
-					switch (response.substring(0, 4)) {
+					String resCode = response.equals("") ? "": response.substring(0, 4);
+					System.err.println("resCode: " + resCode);
+					switch (resCode) {
+						case "":
+							System.err.println("NO COMMAND");
+							byte[] readyResponse = new String("220-service ready\r\n").getBytes(msgCharset);
+							ByteBuffer buf = ByteBuffer.wrap(readyResponse);
+							//buffer.put(response);
+							//buffer.flip();
+							while (buf.hasRemaining()) {
+								clientChannel.write(buf);
+							}
+							break;
 						case "HELO":
 							System.err.println("Command: HELO");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							byte[] heloResponse = new String("250-ok\r\n").getBytes(msgCharset);
+							ByteBuffer bb = ByteBuffer.wrap(heloResponse);
+							//buffer.put(response);
+							//buffer.flip();
+							while (bb.hasRemaining()) {
+								clientChannel.write(bb);
+							}
 							break;
 						case "MAIL":
 							System.err.println("Command: MAIL");
@@ -86,7 +107,7 @@ public class SMTPServer {
 							break;
 						case "DATA":
 							System.err.println("Command: DATA");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							clientChannel.write(ByteBuffer.wrap(new String("354-start with mail input\r\n").getBytes(msgCharset)));
 							break;
 						case "RCPT":
 							System.err.println("Command: RCPT");
@@ -94,31 +115,19 @@ public class SMTPServer {
 							break;
 						case "QUIT":
 							System.err.println("Command: QUIT");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							clientChannel.write(ByteBuffer.wrap(
+									new String("221-service closing transmission channel\r\n")
+										.getBytes(msgCharset)));
 							break;
 						case "HELP":
 							System.err.println("Command: HELP");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
+							clientChannel.write(ByteBuffer.wrap(new String("214-help message\r\n").getBytes(msgCharset)));
 							break;
 							
 						
 						default:
 							System.out.println("wrong command");
 					}
-					
-				}
-				
-				if (key.isWritable()) {
-					System.out.println("Server: isWritable()");
-					
-					// write a response code to the client with a hyphen
-					SocketChannel channel = (SocketChannel) key.channel();
-					byte[] response = new String("220-service ready\r\n").getBytes(msgCharset);
-					ByteBuffer buffer = ByteBuffer.allocate(1024);
-					buffer.put(response);
-					buffer.flip();
-					channel.write(buffer);
-					
 					
 				}
 				
