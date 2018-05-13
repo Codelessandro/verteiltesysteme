@@ -26,6 +26,8 @@ public class SMTPServer {
 		server.configureBlocking(false);
 		server.socket().bind(new InetSocketAddress(1234));
 		server.register(selector, SelectionKey.OP_ACCEPT);
+		ByteBuffer buffer = ByteBuffer.allocate(1024);
+		ByteBuffer readBuf = ByteBuffer.allocate(1024);
 		
 		System.out.println("Server runs on localhost");
 		
@@ -42,11 +44,12 @@ public class SMTPServer {
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
 				
-				/*System.out.println("Server: " + key.toString());
-				System.out.println("Server: " + key.readyOps());*/
-				System.out.println("isWritable: " + key.isWritable());
-				System.out.println("isReadable: " + key.isReadable());
-				System.out.println("isAcceptable: " + key.isAcceptable());
+				//System.out.println("Server toString(): " + key.toString());
+				//System.out.println("Server readyOps(): " + key.readyOps());
+				//System.out.println("Server interestOps(): " + key.interestOps());
+				//System.out.println("isWritable: " + key.isWritable());
+				//System.out.println("isReadable: " + key.isReadable());
+				//System.out.println("isAcceptable: " + key.isAcceptable());
 				
 				
 				
@@ -56,89 +59,163 @@ public class SMTPServer {
 					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
 					SocketChannel client = sock.accept();
 					client.configureBlocking(false);
-					client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+					SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+					
+					SMTPServerState state = new SMTPServerState();
+					clientKey.attach(state);
 					
 				}
-				
-				/*if (key.isReadable()) {
-					System.err.println("Server: isReadable()");
-					
-				}*/
 				
 				if (key.isWritable()) {
 					System.err.println("Server: isWritable()");
 					
-					ByteBuffer buffer = ByteBuffer.allocate(1024);
+					SMTPServerState state = (SMTPServerState) key.attachment();
 					SocketChannel clientChannel = (SocketChannel) key.channel();
-					int readBytes = clientChannel.read(buffer);
-					buffer.flip();
-					System.out.println("read bytes: " + readBytes);
-					System.out.println("ByteBuffer: " + buffer);
-					CharBuffer charB = decoder.decode(buffer);
+					
+					int readBytes = clientChannel.read(readBuf);
+					CharBuffer charB = decoder.decode(readBuf);
+					
 					String response = charB.toString();
 					System.out.println("CharBuffer: " + response);
-					
 					String resCode = response.equals("") ? "": response.substring(0, 4);
 					System.err.println("resCode: " + resCode);
-					switch (resCode) {
-						case "":
-							System.err.println("NO COMMAND");
-							byte[] readyResponse = new String("220-service ready\r\n").getBytes(msgCharset);
-							ByteBuffer buf = ByteBuffer.wrap(readyResponse);
-							//buffer.put(response);
-							//buffer.flip();
-							while (buf.hasRemaining()) {
-								clientChannel.write(buf);
-							}
-							break;
-						case "HELO":
-							System.err.println("Command: HELO");
-							byte[] heloResponse = new String("250-ok\r\n").getBytes(msgCharset);
-							ByteBuffer bb = ByteBuffer.wrap(heloResponse);
-							//buffer.put(response);
-							//buffer.flip();
-							while (bb.hasRemaining()) {
-								clientChannel.write(bb);
-							}
-							break;
-						case "MAIL":
-							System.err.println("Command: MAIL");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
-							break;
-						case "DATA":
-							System.err.println("Command: DATA");
-							clientChannel.write(ByteBuffer.wrap(new String("354-start with mail input\r\n").getBytes(msgCharset)));
-							break;
-						case "RCPT":
-							System.err.println("Command: RCPT");
-							clientChannel.write(ByteBuffer.wrap(new String("250-ok\r\n").getBytes(msgCharset)));
-							break;
-						case "QUIT":
-							System.err.println("Command: QUIT");
-							clientChannel.write(ByteBuffer.wrap(
-									new String("221-service closing transmission channel\r\n")
-										.getBytes(msgCharset)));
-							break;
-						case "HELP":
-							System.err.println("Command: HELP");
-							clientChannel.write(ByteBuffer.wrap(new String("214-help message\r\n").getBytes(msgCharset)));
-							break;
-							
-						
-						default:
-							System.out.println("wrong command");
+					
+					if (resCode.equals("HELP")) {
+						System.err.println("Command: HELP");
+						switch(state.getPreviousState()) {
+							case SMTPClientState.CONNECTED:
+								send(clientChannel, buffer, "214-help message\r\n");
+								state.setState(SMTPClientState.RECEIVEDWELCOME);
+								break;
+							case SMTPClientState.RECEIVEDWELCOME:
+								send(clientChannel, buffer, "214-help message\r\n");
+								state.setState(SMTPClientState.MAILFROMSENT);
+								break;
+							case SMTPClientState.MAILFROMSENT:
+								send(clientChannel, buffer, "214-help message\r\n");
+								state.setState(SMTPClientState.RCPTTOSENT);
+								break;
+							case SMTPClientState.RCPTTOSENT:
+								send(clientChannel, buffer, "214-help message\r\n");
+								state.setState(SMTPClientState.DATASENT);
+								break;
+							case SMTPClientState.MESSAGESENT:
+								send(clientChannel, buffer, "214-help message\r\n");
+								state.setState(SMTPClientState.QUITSENT);
+								break;
+						}
 					}
 					
-				}
-				
-				
+					switch (state.getState()) {
+						case SMTPServerState.CONNECTED:
+							if (resCode.equals("")) {
+								System.err.println("NO COMMAND");
+								send(clientChannel, buffer, "220-service ready\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.RECEIVEDWELCOME);
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+						case SMTPServerState.RECEIVEDWELCOME:
+							if (resCode.equalsIgnoreCase("HELO")) {
+								System.err.println("Command: HELO");
+								send(clientChannel, buffer, "250-ok\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.MAILFROMSENT);
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+						case SMTPServerState.MAILFROMSENT:
+							if (resCode.equals("MAIL")) {
+								System.err.println("Command: MAIL");
+								send(clientChannel, buffer, "250-ok\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.RCPTTOSENT);
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+						case SMTPServerState.RCPTTOSENT:
+							if (resCode.equals("RCPT")) {
+								System.err.println("Command: RCPT");
+								send(clientChannel, buffer, "250-ok\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.DATASENT);
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+						case SMTPServerState.DATASENT:
+							if (resCode.equals("DATA")) {
+								System.err.println("Command: DATA");
+								send(clientChannel, buffer, "354-start with mail input\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.MESSAGESENT);
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+						case SMTPServerState.MESSAGESENT:
+							send(clientChannel, buffer, "250-ok\r\n");
+							state.setPreviousState(state.getState());
+							state.setState(SMTPServerState.QUITSENT);
+							break;
+						case SMTPServerState.QUITSENT:
+							if (resCode.equals("QUIT")) {
+								System.err.println("Command: QUIT");
+								send(clientChannel, buffer, "221-service closing transmission channel\r\n");
+								System.out.println("client wants to finish the connection");
+								clientChannel.close();
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
+							break;
+							
+						default:
+							System.err.println("wrong command");
+					}					
+					
+				}	
 				iter.remove();
-			}
-			
+			}	
 		}
-		
+	}
+
+	private static void debugAndExit(SocketChannel channel, ByteBuffer buffer, String responseCode) 
+			throws IOException {
+		buffer.position(0);
+		System.out.println("buffer: " + decoder.decode(buffer));
+		System.err.print("Unexpected response code " + responseCode + ", exiting...");
+		channel.close();
+		System.exit(1);
 		
 	}
+
+	private static void send(SocketChannel channel, ByteBuffer buffer, String resMsg) throws IOException {
+		buffer.clear();
 		
+		buffer.put(resMsg.getBytes(msgCharset));
 		
+		buffer.flip();
+		
+		channel.write(buffer);
+		
+		buffer.clear();
+		
+	}
+
+	private static boolean readCommandLine(SocketChannel socketChannel, ByteBuffer buffer) throws IOException {
+		socketChannel.read(buffer);
+		CharBuffer cb = decoder.decode(buffer);
+		String command = cb.toString().substring(0, 4);
+		if (command.equals("") | command.equals("HELO") | command.equals("RCPT") 
+				| command.equals("DATA") | command.equals("MAIL") |
+						command.equals("HELP") | command.equals("QUIT") | command.equals("DATA")) {
+							return true;
+						}
+		
+		return false;
+	}		
 }
