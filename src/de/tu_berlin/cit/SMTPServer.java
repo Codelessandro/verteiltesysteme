@@ -195,6 +195,8 @@ public class SMTPServer {
 								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
+							
+							
 						case SMTPServerState.QUITSENT:
 							if (resCode.equals("QUIT")) {
 								System.out.println("Command: QUIT");
