@@ -27,7 +27,7 @@ public class SMTPServer {
 		server.socket().bind(new InetSocketAddress(1234));
 		server.register(selector, SelectionKey.OP_ACCEPT);
 		ByteBuffer buffer = ByteBuffer.allocate(1024);
-		ByteBuffer readBuf = ByteBuffer.allocate(1024);
+//		ByteBuffer readBuf = ByteBuffer.allocate(1024);
 		
 		System.out.println("Server runs on localhost");
 		
@@ -72,12 +72,17 @@ public class SMTPServer {
 					SMTPServerState state = (SMTPServerState) key.attachment();
 					SocketChannel clientChannel = (SocketChannel) key.channel();
 					
-					int readBytes = clientChannel.read(readBuf);
-					CharBuffer charB = decoder.decode(readBuf);
+					buffer.clear();
+					buffer.put(new byte[1024]);
+					buffer.clear();
+					
+					int readBytes = clientChannel.read(buffer);
+					buffer.flip();
+					CharBuffer charB = decoder.decode(buffer);
 					
 					String response = charB.toString();
 					System.out.println("CharBuffer: " + response);
-					String resCode = response.equals("") ? "": response.substring(0, 4);
+					String resCode = (readBytes == 0) ? "": response.substring(0, 4);
 					System.err.println("resCode: " + resCode);
 					
 					if (resCode.equals("HELP")) {
@@ -114,17 +119,19 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.RECEIVEDWELCOME);
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "220-service ready\r\n.\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.RECEIVEDWELCOME:
-							if (resCode.equalsIgnoreCase("HELO")) {
+							if (resCode.equals("HELO")) {
 								System.err.println("Command: HELO");
 								send(clientChannel, buffer, "250-ok\r\n");
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.MAILFROMSENT);
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "220-service ready\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.MAILFROMSENT:
@@ -134,7 +141,8 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.RCPTTOSENT);
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "250-ok\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.RCPTTOSENT:
@@ -144,7 +152,8 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.DATASENT);
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "250-ok\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.DATASENT:
@@ -154,10 +163,13 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.MESSAGESENT);
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "250-ok\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.MESSAGESENT:
+							if (resCode.equals("QUIT"))
+								
 							send(clientChannel, buffer, "250-ok\r\n");
 							state.setPreviousState(state.getState());
 							state.setState(SMTPServerState.QUITSENT);
@@ -169,7 +181,8 @@ public class SMTPServer {
 								System.out.println("client wants to finish the connection");
 								clientChannel.close();
 							} else {
-								debugAndExit(clientChannel, buffer, resCode);
+								send(clientChannel, buffer, "220-service ready\r\n");
+								//debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 							
