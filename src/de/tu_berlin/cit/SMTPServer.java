@@ -29,7 +29,12 @@ public class SMTPServer {
 		server.register(selector, SelectionKey.OP_ACCEPT);
 		ByteBuffer buffer = ByteBuffer.allocate(1024);
 		boolean serviceReady = false;
+		boolean exists = Files.exists(Paths.get("mails"));
 		
+		if (!exists) {
+			Path root = Files.createDirectory(Paths.get("mails"));
+		}
+			
 		Path dir = null;
 		Path file = null;
 		FileChannel fc = null;
@@ -50,17 +55,7 @@ public class SMTPServer {
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
 				
-				//System.out.println("Server toString(): " + key.toString());
-				//System.out.println("Server readyOps(): " + key.readyOps());
-				//System.out.println("Server interestOps(): " + key.interestOps());
-				//System.out.println("isWritable: " + key.isWritable());
-				//System.out.println("isReadable: " + key.isReadable());
-				//System.out.println("isAcceptable: " + key.isAcceptable());
-				
-				
-				
 				if (key.isAcceptable()) {
-					System.out.println("Server: isAccaptable()");
 					
 					ServerSocketChannel sock = (ServerSocketChannel) key.channel();
 					SocketChannel client = sock.accept();
@@ -73,7 +68,6 @@ public class SMTPServer {
 				}
 				
 				if (key.isWritable()) {
-					System.out.println("Server: isWritable()");
 					
 					SMTPServerState state = (SMTPServerState) key.attachment();
 					SocketChannel clientChannel = (SocketChannel) key.channel();
@@ -93,11 +87,18 @@ public class SMTPServer {
 					
 					String response = charB.toString();
 					System.out.println("CharBuffer: " + response);
+					
+					if (response.length() <= 4 & serviceReady) {
+						System.err.println("Text after command was empty");
+						System.exit(1);
+					}
+					
 					String resCode = (readBytes == 0) ? "": response.substring(0, 4);
 					System.out.println("resCode: " + resCode);
 					
 					if (resCode.equals("HELP")) {
 						System.out.println("Command: HELP");
+						
 						switch(state.getPreviousState()) {
 							case SMTPServerState.CONNECTED:
 								send(clientChannel, buffer, "214-please send HELO\r\n.\r\n");
@@ -152,7 +153,7 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.RCPTTOSENT);
 								
-								mailFrom = response;
+								mailFrom = response.substring(0, response.length()-2);
 							} else {
 								debugAndExit(clientChannel, buffer, resCode);
 							}
@@ -164,7 +165,7 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.DATASENT);
 								
-								rcptTo = response;
+								rcptTo = response.substring(0, response.length()-2);
 							} else {
 								debugAndExit(clientChannel, buffer, resCode);
 							}
@@ -185,11 +186,18 @@ public class SMTPServer {
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.QUITSENT);
 								
-								int msgID = ((int) Math.random()) * 1000;
-								dir = Files.createDirectory(Paths.get("mails/" + rcptTo));
+								int msgID = (int)(Math.random() * 1000);
+								
+								if (!Files.exists(Paths.get("mails/" + rcptTo))) {
+									dir = Files.createDirectory(Paths.get("mails/" + rcptTo));
+								} else {
+									System.out.println("directory already exists!");
+								}
+								
 								file = Files.createFile(
 										Paths.get("mails/" + rcptTo + "/" +  mailFrom + "_" + msgID));
-								fc = FileChannel.open(Paths.get("mails/" + rcptTo + "/" +  mailFrom + "_" + msgID));
+								fc = FileChannel.open(Paths.get("mails/" + rcptTo + "/" +  mailFrom + "_" + msgID), 
+										StandardOpenOption.WRITE);
 								fc.write(ByteBuffer.wrap(response.getBytes(msgCharset)));
 							} else {
 								debugAndExit(clientChannel, buffer, resCode);
@@ -241,17 +249,4 @@ public class SMTPServer {
 		buffer.clear();
 		
 	}
-
-	private static boolean readCommandLine(SocketChannel socketChannel, ByteBuffer buffer) throws IOException {
-		socketChannel.read(buffer);
-		CharBuffer cb = decoder.decode(buffer);
-		String command = cb.toString().substring(0, 4);
-		if (command.equals("") | command.equals("HELO") | command.equals("RCPT") 
-				| command.equals("DATA") | command.equals("MAIL") |
-						command.equals("HELP") | command.equals("QUIT") | command.equals("DATA")) {
-							return true;
-						}
-		
-		return false;
-	}		
 }
