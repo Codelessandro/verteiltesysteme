@@ -2,6 +2,7 @@ package de.tu_berlin.cit;
 
 import java.nio.*;
 import java.nio.charset.*;
+import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,14 +28,19 @@ public class SMTPServer {
 		server.socket().bind(new InetSocketAddress(1234));
 		server.register(selector, SelectionKey.OP_ACCEPT);
 		ByteBuffer buffer = ByteBuffer.allocate(1024);
-//		ByteBuffer readBuf = ByteBuffer.allocate(1024);
+		boolean serviceReady = false;
+		
+		Path dir = null;
+		Path file = null;
+		FileChannel fc = null;
+		String mailFrom = "";
+		String rcptTo = "";
 		
 		System.out.println("Server runs on localhost");
 		
 		while (true) {
 			
 			if (selector.select() == 0) {
-				System.out.println("select(): " + selector.select());
 				continue;
 			}
 			
@@ -67,7 +73,7 @@ public class SMTPServer {
 				}
 				
 				if (key.isWritable()) {
-					System.err.println("Server: isWritable()");
+					System.out.println("Server: isWritable()");
 					
 					SMTPServerState state = (SMTPServerState) key.attachment();
 					SocketChannel clientChannel = (SocketChannel) key.channel();
@@ -77,112 +83,127 @@ public class SMTPServer {
 					buffer.clear();
 					
 					int readBytes = clientChannel.read(buffer);
+					
+					if (readBytes == 0 && serviceReady) {
+						continue;
+					}
+					
 					buffer.flip();
 					CharBuffer charB = decoder.decode(buffer);
 					
 					String response = charB.toString();
 					System.out.println("CharBuffer: " + response);
 					String resCode = (readBytes == 0) ? "": response.substring(0, 4);
-					System.err.println("resCode: " + resCode);
+					System.out.println("resCode: " + resCode);
 					
 					if (resCode.equals("HELP")) {
-						System.err.println("Command: HELP");
+						System.out.println("Command: HELP");
 						switch(state.getPreviousState()) {
-							case SMTPClientState.CONNECTED:
-								send(clientChannel, buffer, "214-help message\r\n");
-								state.setState(SMTPClientState.RECEIVEDWELCOME);
+							case SMTPServerState.CONNECTED:
+								send(clientChannel, buffer, "214-please send HELO\r\n.\r\n");
+								state.setState(SMTPServerState.RECEIVEDWELCOME);
 								break;
-							case SMTPClientState.RECEIVEDWELCOME:
-								send(clientChannel, buffer, "214-help message\r\n");
-								state.setState(SMTPClientState.MAILFROMSENT);
+							case SMTPServerState.RECEIVEDWELCOME:
+								send(clientChannel, buffer, "214-please send MAIL FROM\r\n.\r\n");
+								state.setState(SMTPServerState.MAILFROMSENT);
 								break;
-							case SMTPClientState.MAILFROMSENT:
-								send(clientChannel, buffer, "214-help message\r\n");
-								state.setState(SMTPClientState.RCPTTOSENT);
+							case SMTPServerState.MAILFROMSENT:
+								send(clientChannel, buffer, "214-please send RCPT TO\r\n.\r\n");
+								state.setState(SMTPServerState.RCPTTOSENT);
 								break;
-							case SMTPClientState.RCPTTOSENT:
-								send(clientChannel, buffer, "214-help message\r\n");
-								state.setState(SMTPClientState.DATASENT);
+							case SMTPServerState.RCPTTOSENT:
+								send(clientChannel, buffer, "214-please send DATA\r\n.\r\n");
+								state.setState(SMTPServerState.DATASENT);
 								break;
-							case SMTPClientState.MESSAGESENT:
-								send(clientChannel, buffer, "214-help message\r\n");
-								state.setState(SMTPClientState.QUITSENT);
+							case SMTPServerState.MESSAGESENT:
+								send(clientChannel, buffer, "214-please send QUIT\r\n.\r\n");
+								state.setState(SMTPServerState.QUITSENT);
 								break;
 						}
+						continue;
 					}
 					
 					switch (state.getState()) {
 						case SMTPServerState.CONNECTED:
 							if (resCode.equals("")) {
-								System.err.println("NO COMMAND");
-								send(clientChannel, buffer, "220-service ready\r\n");
+								System.out.println("NO COMMAND");
+								send(clientChannel, buffer, "220-service ready\r\n.\r\n");
+								serviceReady = true;
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.RECEIVEDWELCOME);
 							} else {
-								send(clientChannel, buffer, "220-service ready\r\n.\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.RECEIVEDWELCOME:
 							if (resCode.equals("HELO")) {
-								System.err.println("Command: HELO");
-								send(clientChannel, buffer, "250-ok\r\n");
+								System.out.println("Command: HELO");
+								send(clientChannel, buffer, "250-ok\r\n.\r\n");
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.MAILFROMSENT);
 							} else {
-								send(clientChannel, buffer, "220-service ready\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.MAILFROMSENT:
 							if (resCode.equals("MAIL")) {
-								System.err.println("Command: MAIL");
-								send(clientChannel, buffer, "250-ok\r\n");
+								System.out.println("Command: MAIL");
+								send(clientChannel, buffer, "250-ok\r\n.\r\n");
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.RCPTTOSENT);
+								
+								mailFrom = response;
 							} else {
-								send(clientChannel, buffer, "250-ok\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.RCPTTOSENT:
 							if (resCode.equals("RCPT")) {
-								System.err.println("Command: RCPT");
-								send(clientChannel, buffer, "250-ok\r\n");
+								System.out.println("Command: RCPT");
+								send(clientChannel, buffer, "250-ok\r\n.\r\n");
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.DATASENT);
+								
+								rcptTo = response;
 							} else {
-								send(clientChannel, buffer, "250-ok\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.DATASENT:
 							if (resCode.equals("DATA")) {
-								System.err.println("Command: DATA");
-								send(clientChannel, buffer, "354-start with mail input\r\n");
+								System.out.println("Command: DATA");
+								send(clientChannel, buffer, "354-start with mail input\r\n.\r\n");
 								state.setPreviousState(state.getState());
 								state.setState(SMTPServerState.MESSAGESENT);
 							} else {
-								send(clientChannel, buffer, "250-ok\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 						case SMTPServerState.MESSAGESENT:
-							if (resCode.equals("QUIT"))
+							if (resCode.matches("[a-z| ' ']{4}")) {
+								send(clientChannel, buffer, "250-ok\r\n.\r\n");
+								state.setPreviousState(state.getState());
+								state.setState(SMTPServerState.QUITSENT);
 								
-							send(clientChannel, buffer, "250-ok\r\n");
-							state.setPreviousState(state.getState());
-							state.setState(SMTPServerState.QUITSENT);
+								int msgID = ((int) Math.random()) * 1000;
+								dir = Files.createDirectory(Paths.get("mails/" + rcptTo));
+								file = Files.createFile(
+										Paths.get("mails/" + rcptTo + "/" +  mailFrom + "_" + msgID));
+								fc = FileChannel.open(Paths.get("mails/" + rcptTo + "/" +  mailFrom + "_" + msgID));
+								fc.write(ByteBuffer.wrap(response.getBytes(msgCharset)));
+							} else {
+								debugAndExit(clientChannel, buffer, resCode);
+							}
 							break;
 						case SMTPServerState.QUITSENT:
 							if (resCode.equals("QUIT")) {
-								System.err.println("Command: QUIT");
-								send(clientChannel, buffer, "221-service closing transmission channel\r\n");
+								System.out.println("Command: QUIT");
+								send(clientChannel, buffer, "221-service closing transmission channel\r\n.\r\n");
 								System.out.println("client wants to finish the connection");
-								clientChannel.close();
+								key.cancel();
+								key.channel().close();
 							} else {
-								send(clientChannel, buffer, "220-service ready\r\n");
-								//debugAndExit(clientChannel, buffer, resCode);
+								debugAndExit(clientChannel, buffer, resCode);
 							}
 							break;
 							
