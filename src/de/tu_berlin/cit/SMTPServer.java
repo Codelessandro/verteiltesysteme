@@ -2,13 +2,11 @@ package de.tu_berlin.cit;
 
 import java.nio.*;
 import java.nio.charset.*;
-import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.nio.channels.*;
-import java.io.File;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
